@@ -9,6 +9,24 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// firebase sdk
+const admin = require("firebase-admin");
+const serviceAccount = require("./serviceKey.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+// middleware
+
+const middleware = (req, res, next) => {
+  // console.log(req.headers.authorization);
+  // console.log(" i am middleware");
+  const token = req.headers.authorization.split(" ")[1];
+  next();
+  // console.log(req.headers.authorization);
+  console.log(token);
+};
+
 app.get("/", (req, res) => {
   res.send("Be Ready to Code");
 });
@@ -26,7 +44,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     const db = client.db(process.env.DB_NAME);
     const modelCollection = db.collection("models");
@@ -38,7 +56,7 @@ async function run() {
     });
 
     // get single model by ID
-    app.get("/models/:id", async (req, res) => {
+    app.get("/models/:id", middleware, async (req, res) => {
       const { id } = req.params;
       const result = await modelCollection.findOne({ _id: new ObjectId(id) });
       res.send(result);
@@ -79,7 +97,7 @@ async function run() {
       res.send(result);
     });
 
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log("✅ Connected to MongoDB successfully!");
   } catch (err) {
     console.error("❌ MongoDB Connection Error:", err);
