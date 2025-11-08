@@ -18,13 +18,20 @@ admin.initializeApp({
 
 // middleware
 
-const middleware = (req, res, next) => {
-  // console.log(req.headers.authorization);
-  // console.log(" i am middleware");
-  const token = req.headers.authorization.split(" ")[1];
-  next();
-  // console.log(req.headers.authorization);
-  console.log(token);
+const middleware = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const decodedUser = await admin.auth().verifyIdToken(token);
+    req.decoded = decodedUser;
+    next();
+  } catch (error) {
+    res.status(403).send({ message: "Forbidden access" });
+  }
 };
 
 app.get("/", (req, res) => {
@@ -48,6 +55,7 @@ async function run() {
 
     const db = client.db(process.env.DB_NAME);
     const modelCollection = db.collection("models");
+    const downloadsCollection = db.collection("downloads");
 
     // get all models
     app.get("/models", async (req, res) => {
@@ -94,6 +102,51 @@ async function run() {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const result = await modelCollection.deleteOne(filter);
+      res.send(result);
+    });
+
+    // my models making api
+    app.get("/my-models", middleware, async (req, res) => {
+      const email = req.query.email;
+      const result = await modelCollection
+        .find({ created_by: email })
+        .toArray();
+      res.send(result);
+    });
+
+    // download api
+    app.post("/downloads/:id", async (req, res) => {
+      const data = req.body;
+      const id = req.params.id;
+      const result = await downloadsCollection.insertOne(data);
+      const filter = { _id: new ObjectId(id) };
+      const update = {
+        $inc: {
+          downloads: 1,
+        },
+      };
+      const downloadCounted = await modelCollection.updateOne(filter, update);
+      res.send({ result, downloadCounted });
+    });
+
+    app.get("/my-downloads", async (req, res) => {
+      const email = req.query.email;
+      const result = await downloadsCollection
+        .find({ downloaded_by: email })
+        .toArray();
+      res.send(result);
+    });
+
+    // search
+    app.get("/search", async (req, res) => {
+      const search_Text = req.query.name; // match the frontend query param
+
+      if (!search_Text) {
+        return res.status(400).send({ message: "Search query is required" });
+      }
+
+      const query = { name: { $regex: search_Text, $options: "i" } }; // partial, case-insensitive
+      const result = await modelCollection.find(query).toArray();
       res.send(result);
     });
 
